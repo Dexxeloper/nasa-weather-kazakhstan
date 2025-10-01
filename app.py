@@ -2,6 +2,22 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
+import streamlit as st
+
+st.set_page_config(page_title="NASA Weather", layout="centered")
+
+st.title("📊 NASA Weather Assistant")
+
+st.markdown("""
+Добро пожаловать! Вы можете:
+
+- 📈 Смотреть анализ погоды
+- 🎮 Играть в игру на основе погодных данных
+
+Выберите страницу в левом меню.
+""")
+
+
 st.set_page_config(page_title="NASA Weather Kazakhstan", page_icon="🌾", layout="centered")
 
 # Заголовок
