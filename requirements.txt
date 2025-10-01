@@ -5,3 +5,5 @@ matplotlib
 folium
 requests
 streamlit-folium
+seaborn
+
