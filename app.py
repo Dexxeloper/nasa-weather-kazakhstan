@@ -1,135 +1,183 @@
 import streamlit as st
 import pandas as pd
+import random
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-import streamlit as st
+# — Настройка страницы —
+st.set_page_config(
+    page_title="🌾 Агро-Погода Казахстана",
+    layout="centered",
+    page_icon="🌤️",
+)
 
-st.set_page_config(page_title="NASA Weather", layout="centered")
-
-st.title("📊 NASA Weather Assistant")
-
+st.title("🌾 Агро-Погода Казахстана")
+st.markdown("Погодный помощник для фермеров, аграриев и исследователей.")
 st.markdown("""
-Добро пожаловать! Вы можете:
-
-- 📈 Смотреть анализ погоды
-- 🎮 Играть в игру на основе погодных данных
-
-Выберите страницу в левом меню.
+Приложение анализирует метеоданные NASA по Казахстану и помогает:
+- 📊 Понимать погодные тренды
+- 🌱 Делать правильный выбор для посадки
+- 💡 Получать рекомендации на основе данных
 """)
-
-
-st.set_page_config(page_title="NASA Weather Kazakhstan", page_icon="🌾", layout="centered")
-
-# Заголовок
-st.markdown("<h1 style='text-align: center; color: green;'>🌾 NASA Weather Kazakhstan</h1>", unsafe_allow_html=True)
-
-st.markdown("""
-<center>
-Интеллектуальный погодный помощник для фермеров Казахстана.  
-Данные NASA + локальные измерения = умные решения для посева 🌍  
-</center>
-""", unsafe_allow_html=True)
-
 st.markdown("---")
 
-with st.expander("ℹ️ О проекте"):
-    st.markdown("""
-    **Цель:** снизить риски фермеров, связанных с погодой  
-    **Источники данных:** NASA POWER, локальные сенсоры  
-    **Ключевые функции:**
-    - Прогноз погоды
-    - Умные рекомендации
-    - Интерактивная карта
-    """)
+# Настройки страницы
+st.set_page_config(page_title="🌤 NASA Weather Kazakhstan", layout="centered")
+st.markdown("<style>h1, h2 { color: #1f77b4; }</style>", unsafe_allow_html=True)
 
+# Инициализация состояния
+for key in ["score", "fails", "rounds", "history"]:
+    if key not in st.session_state:
+        st.session_state[key] = 0 if key != "history" else []
 
-# Загрузка данных
-df = pd.read_csv("weather_kazakhstan.csv")
-df['date'] = pd.to_datetime(df['date'])
+# Загружаем CSV
+df = pd.read_csv("weather_kazakhstan_with_region.csv")
+df["date"] = pd.to_datetime(df["date"])
 
-st.download_button(
-    label="📥 Скачать CSV с погодными данными",
-    data=df.to_csv(index=False),
-    file_name='weather_kazakhstan.csv',
-    mime='text/csv'
+# Выбор региона (если колонка есть)
+if "region" in df.columns:
+    selected_region = st.selectbox("🌍 Выберите регион:", sorted(df["region"].unique()))
+    df = df[df["region"] == selected_region]
+else:
+    st.warning("📌 В данных нет информации о регионах. Показываем общий анализ.")
+
+# Обновлённый диапазон дат после фильтрации по региону
+date_min = df["date"].min().date()
+date_max = df["date"].max().date()
+
+import random
+
+regions = ['Астана', 'Алматы', 'Шымкент']
+df['region'] = [random.choice(regions) for _ in range(len(df))]
+
+# Tabs
+tab1, tab2, tab3 = st.tabs(["📊 Аналитика", "🌱 Посадить или подождать", "🌡 Угадай температуру"])
+
+# ===================== 📊 АНАЛИТИКА =====================
+with tab1:
+    st.header("Анализ погодных условий")
+    with st.expander("📆 Как выбрать дату?"):
+        st.info("Выберите период анализа. Например, неделю перед посадкой.")
+date_range = st.date_input(
+    "📆 Выберите диапазон дат:",
+    [date_min, date_max],
+    min_value=date_min,
+    max_value=date_max,
+    key="date_range_selector"
 )
 
 
-# Блок выбора даты
-st.sidebar.header("📅 Выбор диапазона дат")
-start_date = st.sidebar.date_input("Начальная дата", df['date'].min().date())
-end_date = st.sidebar.date_input("Конечная дата", df['date'].max().date())
-
-# Фильтрация по дате
-mask = (df['date'] >= pd.to_datetime(start_date)) & (df['date'] <= pd.to_datetime(end_date))
-filtered_df = df.loc[mask]
+if isinstance(date_range, tuple) and len(date_range) == 2:
+    start, end = date_range
+else:
+    st.warning("Пожалуйста, выберите начальную и конечную дату.")
+    st.stop()
 
 
+filtered_df = df[(df["date"].dt.date >= start) & (df["date"].dt.date <= end)]
 
-# Визуализация температуры
-st.subheader("🌡 Температура воздуха (°C)")
-fig1, ax1 = plt.subplots()
-ax1.plot(filtered_df['date'], filtered_df['temperature_C'], color='darkorange')
-ax1.set_ylabel("Температура (°C)")
-ax1.set_xlabel("Дата")
-st.pyplot(fig1)
-
-# Визуализация осадков
-st.subheader("🌧 Осадки (мм)")
-fig2, ax2 = plt.subplots()
-ax2.bar(filtered_df['date'], filtered_df['precipitation_mm'], color='skyblue')
-ax2.set_ylabel("Осадки (мм)")
-ax2.set_xlabel("Дата")
-st.pyplot(fig2)
-
-import folium
-from streamlit_folium import st_folium
-
-st.subheader("🗺 Погодная карта (экспериментальная версия)")
-
-# Средняя точка для карты (Астана)
-m = folium.Map(location=[51.1605, 71.4704], zoom_start=5)
-
-# Добавим точки с температурой и осадками
-for _, row in filtered_df.iterrows():
-    tooltip = f"{row['date'].date()}<br>🌡 {row['temperature_C']}°C<br>🌧 {row['precipitation_mm']} мм"
-    folium.Marker(
-        location=[51.1605, 71.4704],  # пока одна локация (Астана)
-        tooltip=tooltip,
-        icon=folium.Icon(color='green', icon='cloud')
-    ).add_to(m)
-
-# Покажем карту
-st_data = st_folium(m, width=700)
-
+st.line_chart(filtered_df.set_index("date")[["temperature_C", "precipitation_mm"]])
 
 st.subheader("📊 Рекомендации по погоде")
 
-# Расчёты
-avg_temp = filtered_df['temperature_C'].mean()
-max_temp = filtered_df['temperature_C'].max()
-
-avg_precip = filtered_df['precipitation_mm'].mean()
-max_precip = filtered_df['precipitation_mm'].max()
+avg_temp = filtered_df["temperature_C"].mean()
+avg_precip = filtered_df["precipitation_mm"].mean()
 
 st.markdown(f"""
-**Средняя температура:** {avg_temp:.1f} °C  
-**Максимальная температура:** {max_temp:.1f} °C  
-**Средние осадки:** {avg_precip:.1f} мм  
-**Максимальные осадки:** {max_precip:.1f} мм
+- **Средняя температура:** {avg_temp:.1f} °C  
+- **Средние осадки:** {avg_precip:.1f} мм
 """)
 
-# Условная "AI" логика
+if avg_temp > 30 and avg_precip < 1:
+    st.error("🔥 Жарко и сухо — риск засухи!")
+elif avg_temp < 10 and avg_precip > 5:
+    st.warning("🌧 Холодно и влажно — осторожно с посадкой.")
+elif 20 <= avg_temp <= 28 and 1 <= avg_precip <= 5:
+    st.success("✅ Отличные условия для посева!")
+else:
+    st.info("🤔 Условия умеренные.")
+
+# ===================== 🌱 ИГРА №1 =====================
+with tab2:
+    st.header("🌾 Weather Decision Challenge")
+
+row = df.sample(1).iloc[0]
+date = pd.to_datetime(row["date"]).date()
+temp = row["temperature_C"]
+rain = row["precipitation_mm"]
+
+st.markdown(f"📅 **Дата:** {date} 🌡 **Температура:** {temp:.1f} °C 🌧 **Осадки:** {rain:.1f} мм")
+
+st.markdown("### Что вы решите сегодня?")
 col1, col2 = st.columns(2)
-
 with col1:
-    st.metric("🌡 Средняя температура", f"{avg_temp:.1f} °C", delta=None)
-    st.metric("🌡 Макс. температура", f"{max_temp:.1f} °C", delta=None)
-
+    plant = st.button("🌱 Посадить урожай", key="plant")
 with col2:
-    st.metric("🌧 Средние осадки", f"{avg_precip:.1f} мм", delta=None)
-    st.metric("🌧 Макс. осадки", f"{max_precip:.1f} мм", delta=None)
+    wait = st.button("⏳ Подождать", key="wait")
 
+if plant or wait:
+    st.session_state["rounds"] += 1
+
+    if temp > 30 and rain < 1:
+        outcome = "bad"
+        message = "🔥 Засуха. Урожай пострадал."
+    elif temp < 10 and rain > 5:
+        outcome = "bad"
+        message = "🌧 Сырость и холод. Урожай загнил."
+    elif 20 <= temp <= 28 and 1 <= rain <= 5:
+        outcome = "good"
+        message = "✅ Отличные условия для роста!"
+    elif rain > 10:
+        outcome = "bad"
+        message = "☔️ Слишком много дождя."
+    else:
+        outcome = "neutral"
+        message = "🤔 Условия умеренные."
+
+    if plant:
+        if outcome == "good":
+            st.success("👍 Отличный выбор! " + message)
+            st.session_state["score"] += 1
+        elif outcome == "bad":
+            st.error("👎 Ошибка. " + message)
+            st.session_state["fails"] += 1
+        else:
+            st.info("😐 Нейтральный исход. " + message)
+    else:  # wait
+        if outcome == "bad":
+            st.success("✅ Вы избежали плохих условий.")
+            st.session_state["score"] += 1
+        elif outcome == "good":
+            st.warning("🙃 Упустили шанс на хороший урожай.")
+            st.session_state["fails"] += 1
+        else:
+            st.info("🙂 Ожидание — нормальный выбор.")
+
+# ===================== 🌡 ИГРА №2 =====================
+with tab3:
+    st.header("🌡 Угадай температуру")
+
+row = df.sample(1).iloc[0]
+date = pd.to_datetime(row["date"]).date()
+true_temp = row["temperature_C"]
+rain = row["precipitation_mm"]
+
+st.markdown(f"📅 **Дата:** {date} 🌧 **Осадки:** {rain:.1f} мм")
+
+guess = st.slider("Угадайте температуру (°C):", -40, 50, 20)
+
+if st.button("Проверить", key="check_temp"):
+    st.session_state["rounds"] += 1
+    diff = abs(true_temp - guess)
+    if diff <= 2:
+        st.balloons()
+        st.success(f"🎯 Почти идеально! Было {true_temp:.1f} °C.")
+        st.session_state["score"] += 1
+    elif diff <= 5:
+        st.info(f"🙂 Неплохо. Было {true_temp:.1f} °C.")
+    else:
+        st.error(f"😕 Ошибка. На самом деле: {true_temp:.1f} °C.")
+        st.session_state["fails"] += 1
 if avg_temp > 30 and avg_precip < 1:
     st.error("🔥 Очень жарко и сухо — высокая вероятность засухи. Подумайте об устойчивых культурах.")
 elif avg_temp > 25 and avg_precip < 3:
@@ -141,8 +189,20 @@ elif avg_precip > 10:
 else:
     st.success("✅ Погодные условия благоприятны для посева.")
 
-    st.markdown("---")
+st.markdown("---")
 st.markdown("<center><small>Разработано на хакатоне. Автор: @Dexxeloper • 2025</small></center>", unsafe_allow_html=True)
 
+st.markdown("---")
+with st.expander("ℹ️ О проекте"):
+    st.markdown("""
+    **Проект:** NASA Weather Kazakhstan  
+    **Автор:** Dexxeloper (AGROKAZAKH )  
+    **Источник данных:** NASA POWER (https://power.larc.nasa.gov)  
+    **Используемые технологии:** Streamlit, Pandas, Folium, Matplotlib  
+    **Цель:** Сделать агро-аналитику доступной каждому фермеру.
+
+    🌐 GitHub: [Перейти](https://github.com/Dexxeloper/nasa-weather-kazakhstan)  
+    📊 Онлайн: [Streamlit App](https://nasa-weather-kazakhstan-n7oskv2uzq3ipbpskj2tzb.streamlit.app/)
+    """)
 
 
